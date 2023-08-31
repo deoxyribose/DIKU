@@ -3,7 +3,7 @@
 
 var NUM = "NUM";
 var FALSE = "FALSE";
-var VR = "VAR";
+var VARIABLE = "VARIABLE";
 var PLUS = "PLUS";
 var TIMES = "TIMES";
 var LT = "LT";
@@ -43,7 +43,7 @@ class False extends Node {
 }
 
 
-class Var {
+class Variable {
     constructor(name) {
         this.name = name;
     }
@@ -188,61 +188,184 @@ function writeToConsole(text) {
     }
 }
 
-var io = [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }];
-
-// foo = new Var("y").interpret({ x: 5, y: 10, _out: 5 });
-foo = new Plus(new Num(3), new Num(4));
-foo.interpret({ x: 5, y: 10, _out: 5 });
-tmp = foo.typeSignature(); 
-
 function bottomUp(globalBnd, intOps, boolOps, vars, consts, inputoutputs) {
     // expr_types maps expressions to their type signatures
     // the type signature of an expression is a list of the types of its arguments followed by the type of the expression
-    exprTypes = {FALSE: ["bool"], NUM: ["int"], VAR: ["int"], PLUS: ["int", "int", "int"], TIMES: ["int", "int", "int"], LT: ["int", "int", "bool"], AND: ["bool", "bool", "bool"], NOT: ["bool", "bool"], ITE: ["bool", "int", "int", "int"]};;
-
-    var plist = [];
-    function get_init_plist(vars, consts) {
-        for (i = 0; i < vars.length; i++) {
-            plist.push(new Var(vars[i]));
+    var exprNodes = { FALSE: False, NUM: Num, VARIABLE: Variable, PLUS: Plus, TIMES: Times, LT: Lt, AND: And, NOT: Not, ITE: Ite };;
+    function exprNode(expr) {
+        // if expr is in exprNodes
+        if (expr in exprNodes) {
+            return exprNodes[expr];
         }
-        for (i = 0; i < consts.length; i++) {
-            plist.push(new Num(consts[i]));
+        else {
+            return expr;
         }
-        plist.push(new False());
     }
-    get_init_plist(vars, consts);
-    console.log(plist);
+    // for some reason the VAR key has to be VAR, not VR
+    var exprTypes = { FALSE: ["bool"], NUM: ["int"], VARIABLE: ["int"], PLUS: ["int", "int", "int"], TIMES: ["int", "int", "int"], LT: ["int", "int", "bool"], AND: ["bool", "bool", "bool"], NOT: ["bool", "bool"], ITE: ["bool", "int", "int", "int"] };;
+    function exprType(expr) {
+        expr = expr[0];
+        // if expr is in vars or consts
+        if (vars.includes(expr) || consts.includes(expr)) {
+            return ["int"];
+        }
+        else {
+            return exprTypes[expr];
+        }
+    }
 
-    nonterminals = [Plus, Times, Lt, And, Not, Ite];
-    // var bnd = 0;
-    // while bnd < 3 {
+    function returnType(expr) {
+        return exprType(expr).slice(-1)[0];
+    }
+
+    // initial plist is the list of all terminals, i.e. variables, constants, and false
+    // i.e. concatentation of vars, consts, and [FALSE]
+    // but with all elements wrapped in singleton arrays
+    var plist = vars.map(x => [VARIABLE, [x]]).concat(consts.map(x => [NUM, [x]])).concat([[FALSE]]);
+    var nonterminals = [PLUS, TIMES, LT, AND, NOT, ITE];
 
     function grow(plist, nonterminals) {
+        //     // this function applies every nonterminal to every possible combination of arguments from plist
+        //     // such that the type signature of the nonterminal matches the types of the arguments
+        var next_level_plist = [];
         for (i = 0; i < nonterminals.length; i++) {
             var nonterminal = nonterminals[i];
-            console.log(nonterminal)
             var argtypes = exprTypes[nonterminal].slice(0, -1);
-            console.log(argtypes)
-            var returntype = exprTypes[nonterminal].slice(-1)[0];
-            console.log(returntype)
+            var args = [];
+            for (j = 0; j < argtypes.length; j++) {
+                args.push(plist.filter(x => returnType(x) == argtypes[j]));
+            }
 
-            var args = argtypes.map(function (argtype) {
-                    if (argtype == "int") {
-                        // filter plist for expressions whose typeSignature's last element is int
-                        args.push(plist.filter(function (x) { return exprTypes[x].slice(-1)[0] == "int"; }));
-                    } else if (argtype == "bool") {
-                        args.push(plist.filter(function (x) { return exprTypes[x].slice(-1)[0] == "bool"; }));
-                    }
-                }
-            )
 
-            console.log(args);
+            const cartesianProduct = args.reduce((accumulator, currentArray) => {
+                const newCombinations = [];
+                accumulator.forEach(existingCombination => {
+                    currentArray.forEach(newValue => {
+                        newCombinations.push(existingCombination.concat([newValue]));
+                    });
+                });
+                return newCombinations;
+            }, [[]]);
+
+            // Create next level productions by combining with the nonterminal
+            cartesianProduct.forEach(combination => {
+                next_level_plist.push([nonterminal, ...combination]);
+            });
+        }
+        return plist.concat(next_level_plist);
+    }
+
+    function applyToConstructor(constructor, argArray) {
+        var args = [null].concat(argArray);
+        var factoryFunction = constructor.bind.apply(constructor, args);
+        return new factoryFunction();
+    }
+
+    function tree_map(fn, arr) {
+        if (Array.isArray(arr)) {
+            return arr.map(item => tree_map(fn, item));
+        } else {
+            return fn(arr);
         }
     }
-    grow(plist, nonterminals);
+
+    function AST(expr) {
+        return tree_map(x => exprNode(x), expr)
+    }
+
+    function compile(e) {
+        if (Array.isArray(e)) {
+            if (Object.values(exprNodes).includes(e[0])) {
+                // apply the constructor to the rest of the elements of expr
+                return applyToConstructor(e[0], compile(e.slice(1)));
+            }
+            else {
+                if (e.length > 1) {
+                    return e.map(x => compile(x));
+                }
+                else {
+                    // if first element of expr is not a constructor, then it is a variable or constant
+                    // so we return the first element of expr
+                    return compile(e[0]);
+                }
+            }
+        }
+        else {
+            return e
+        }
+    }
+
+
+    function elimEquvalents(plist, inputoutputs) {
+        // for each inputoutput, for each expression in plist,  interpret the plist expression with the inputoutput
+        // if the output is not in outputs, then push it to outputs
+        // if the output is in outputs, then remove the expression from plist
+        for (i = 0; i < inputoutputs.length; i++) {
+            var outputs = [];
+            var envt = inputoutputs[i];
+            for (j = 0; j < plist.length; j++) {
+                var expr = plist[j];
+                var output = compile(AST(expr)).interpret(envt);
+                console.log(output);
+                if (outputs.includes(output)) {
+                    // remove expr from plist
+                    plist.splice(j, 1);
+                    j--;
+                    break
+                }
+                else {
+                    outputs.push(output);
+                }
+            }
+        }
+        return plist;
+    }
+
+    // var foo = compile(AST(plist[30]));
+    // foo;
+    // console.log(foo.interpret({ x: 5, y: 10, _out: 5 }));
+
+    function isCorrect(p, inputoutputs) {
+        for (i = 0; i < inputoutputs.length; i++) {
+            var envt = inputoutputs[i];
+            var output = compile(AST(p)).interpret(envt);
+            console.log(output);
+            if (output != envt._out) {
+                return false;
+            }
+        }
+        return true;
+    }
+    console.log(plist);
+    for (c = 0; c < globalBnd; c++) {
+        console.log(c);
+        plist = grow(plist, nonterminals);
+        console.log(plist.length);
+        plist = elimEquvalents(plist, inputoutputs);
+        console.log(plist.length);
+        for (n = 0; n < plist.length; n++) {
+            var p = plist[n];
+            if (isCorrect(p, inputoutputs)) {
+                return AST(p);
+            }
+        }
+        console.log(p);
+    }
+    return "FAIL";
+    // plist = grow(plist, nonterminals);
+    // console.log(plist.length);
+    // plist = grow(plist, nonterminals); null;
+    // console.log(plist.length);
+    // console.log(plist.slice(-1)[0]);
 }
 
-var rv = bottomUp(3, [VR, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
+
+// correct_p = ["ITE", ["LT", ["VARIABLE", ["x"]], ["VARIABLE", ["y"]]], ["VARIABLE", ["x"]], ["VARIABLE", ["y"]]];
+// isCorrect(correct_p, inputoutputs);
+
+// var rv = bottomUp(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
+var rv = bottomUp(2, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
+rv;
 
 
 function bottomUpFaster(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
