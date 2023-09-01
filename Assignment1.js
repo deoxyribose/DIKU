@@ -235,8 +235,7 @@ function bottomUp(globalBnd, intOps, boolOps, vars, consts, inputoutputs) {
             for (j = 0; j < argtypes.length; j++) {
                 args.push(plist.filter(x => returnType(x) == argtypes[j]));
             }
-
-
+            // console.log(args);
             const cartesianProduct = args.reduce((accumulator, currentArray) => {
                 const newCombinations = [];
                 accumulator.forEach(existingCombination => {
@@ -296,29 +295,42 @@ function bottomUp(globalBnd, intOps, boolOps, vars, consts, inputoutputs) {
     }
 
 
+    // function elimEquvalents(plist, inputoutputs) {
+    //     // for each inputoutput, for each expression in plist,  interpret the plist expression with the inputoutput
+    //     // if the output is not in outputs, then push it to outputs
+    //     // if the output is in outputs, then remove the expression from plist
+    //     for (i = 0; i < inputoutputs.length; i++) {
+    //         var outputs = [];
+    //         var envt = inputoutputs[i];
+    //         for (j = 0; j < plist.length; j++) {
+    //             var expr = plist[j];
+    //             var output = compile(AST(expr)).interpret(envt);
+    //             console.log(output);
+    //             if (outputs.includes(output)) {
+    //                 // remove expr from plist
+    //                 plist.splice(j, 1);
+    //                 j--;
+    //                 // break
+    //             }
+    //             else {
+    //                 outputs.push(output);
+    //             }
+    //             console.log(outputs);
+    //         }
+    //     }
+    //     return plist;
+    // }
+
     function elimEquvalents(plist, inputoutputs) {
-        // for each inputoutput, for each expression in plist,  interpret the plist expression with the inputoutput
-        // if the output is not in outputs, then push it to outputs
-        // if the output is in outputs, then remove the expression from plist
-        for (i = 0; i < inputoutputs.length; i++) {
-            var outputs = [];
-            var envt = inputoutputs[i];
-            for (j = 0; j < plist.length; j++) {
-                var expr = plist[j];
-                var output = compile(AST(expr)).interpret(envt);
-                console.log(output);
-                if (outputs.includes(output)) {
-                    // remove expr from plist
-                    plist.splice(j, 1);
-                    j--;
-                    break
-                }
-                else {
-                    outputs.push(output);
-                }
-            }
+        let obsUniqs = {};
+        for (p of plist) {
+            ast = compile(AST(p));
+            console.log(ast);
+            let outs = inputoutputs.map(x => ast.interpret(x));
+            obsUniqs[outs] = p;
         }
-        return plist;
+        plist = Object.values(obsUniqs);
+        return plist
     }
 
     // var foo = compile(AST(plist[30]));
@@ -367,7 +379,6 @@ function bottomUp(globalBnd, intOps, boolOps, vars, consts, inputoutputs) {
 var rv = bottomUp(2, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
 rv;
 
-
 function bottomUpFaster(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
 
     return "NYI";
@@ -376,9 +387,8 @@ function bottomUpFaster(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
 
 function run1a1() {
 
-    var rv = bottomUp(3, [VR, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
+    var rv = bottomUp(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
     writeToConsole("RESULT: " + rv.toString());
-
 }
 
 
