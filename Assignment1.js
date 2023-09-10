@@ -492,10 +492,8 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
         if (collection.length == 0) {
             return false;
         }
-        console.log(collection);
         // reduce or of all the masks in the collection
         let masks = collection.map(x => x[1]);
-        console.log(masks)
         var cov = masks.reduce((a, b) => a.map((x, i) => x || b[i]));
         console.log(cov);
         return cov;
@@ -504,32 +502,6 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
     function unify(p1m1, p2m2, counter) {
         var [p1, m1] = p1m1;
         var [p2, m2] = p2m2;
-        console.log(p1);
-        console.log(m1);
-        console.log(p2);
-        console.log(m2);
-        if (p1 == undefined) {
-            return [p2, m2];
-        }
-        var cond_io = inputoutput;
-        // iterate over m1
-        for (var i = 0; i < m1.length; i++) {
-            cond_io[i]._out = m1[i];
-        }
-        console.log(cond_io);
-        condition = bottomUpFaster(globalBnd, [], boolOps, vars, consts, cond_io);
-        console.log(condition.toString());
-        console.log(p1m1);
-        console.log(p2m2);
-        var cov = coverage([p1m1, p2m2]);
-        console.log(cov);
-        // return [new Ite(condition, new compile(AST(p1)), new compile(AST(p2))), cov, c];
-        return [[ITE, [condition, p1, p2]], cov, counter];
-    }
-
-    function unify2(p1m1, p2m2, counter) {
-        var [p1, m1] = p1m1;
-        var [p2, m2] = p2m2;
         if (p1 == undefined) {
             return [p2, m2];
         }
@@ -539,8 +511,8 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
             cond_io[i]._out = m1[i];
         }
         condition = bottomUpFaster(globalBnd, [], boolOps, vars, consts, cond_io);
+        console.log(condition);
         var cov = coverage([p1m1, p2m2]);
-        // return [new Ite(condition, new compile(AST(p1)), new compile(AST(p2))), cov, c];
         return [[ITE, [condition, p1, p2]], cov, counter];
     }
 
@@ -602,16 +574,17 @@ console.log(compile(AST(rv)).toString());
 // console.log(rv);
 
 function tmp(a,b,c) {
-    if (b < 0) {
-        return 0;
-    }
-    else {
-        if (0 < c) {
+    if (0 < c) {
+        if (a<b) {
+        // if ((a<b) && (0<c)) {
             return a*c;
         }
         else {
-            return b*c;
+            return 0;
         }
+    }
+    else {
+        return b*c;
     }
 }
 
@@ -619,7 +592,7 @@ tmp(5, 10, 3);
 tmp(8, 11, -1);
 tmp(3, 6, 4);
 tmp(-3, 8, 4);
-tmp(-3, -8, -4);
+tmp(-3, -8, 4);
 
 function run1a1() {
     var rv = bottomUp(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
