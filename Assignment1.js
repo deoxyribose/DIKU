@@ -421,7 +421,7 @@ function bottomUpFaster(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
         for (var n = 0; n < plist.length; n++) {
             var p = plist[n];
             if (isCorrect(p, inputoutput)) {
-                return compile(AST(p));
+                return p;
             }
         }
         console.log(p);
@@ -429,10 +429,201 @@ function bottomUpFaster(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
     return "FAIL";
 }
 
+function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
+    var plist = vars.map(x => [VARIABLE, [x]]).concat(consts.map(x => [NUM, [x]])).concat([[FALSE]]);
+    var nonterminals = [PLUS, TIMES, LT, AND, NOT, ITE];
+    // first best-effort synthesis attempt
+    // produce a program that works correctly on some inputs and incorrectly on others
+    plist = growFaster(plist, nonterminals, vars, consts);
+    plist = elimEquvalents(plist, inputoutput);
+    // for each program in plist, get list of bools indicating whether it is correct on each input
+    
+    function get_correct_mask(ast, inputoutput) {
+        var correct = [];
+        for (var i = 0; i < inputoutput.length; i++) {
+            var inpt = inputoutput[i];
+            var out = ast.interpret(inpt);
+            if (out == inpt._out) {
+                correct.push(true);
+            }
+            else {
+                correct.push(false);
+            }
+        }
+        return correct;
+    }
+
+    function eval_all_programs(plist, inputoutput) {
+        var all_p_correct = [];
+        for (var n = 0; n < plist.length; n++) {
+            var p = plist[n];
+            var ast = compile(AST(p));
+            var correct = get_correct_mask(ast, inputoutput);
+            all_p_correct.push([p, correct]);
+        }
+        return all_p_correct;
+    }
+
+    function max_correct(all_p_correct, mask) {
+        // find the program that is correct on the most inputs
+        var max_correct = 0;
+        var max_correct_p = [];
+        var best_correct = [];
+        for (var i = 0; i < all_p_correct.length; i++) {
+            var correct = all_p_correct[i][1];
+            // if mask is defined, only consider the inputs where mask is true
+            if (mask != undefined) {
+                var mask_correct = correct.filter((x, j) => mask[j] == true);
+            }
+            else {
+                var mask_correct = correct;
+            }
+            var num_correct = mask_correct.filter(x => x == true).length;
+            if (num_correct > max_correct) {
+                max_correct = num_correct;
+                max_correct_p = all_p_correct[i][0];
+                best_correct = correct;
+            }
+        }
+        return [max_correct_p, best_correct];
+    }
+    
+    function coverage(collection) {
+        if (collection.length == 0) {
+            return false;
+        }
+        console.log(collection);
+        // reduce or of all the masks in the collection
+        let masks = collection.map(x => x[1]);
+        console.log(masks)
+        var cov = masks.reduce((a, b) => a.map((x, i) => x || b[i]));
+        console.log(cov);
+        return cov;
+    }
+
+    function unify(p1m1, p2m2, counter) {
+        var [p1, m1] = p1m1;
+        var [p2, m2] = p2m2;
+        console.log(p1);
+        console.log(m1);
+        console.log(p2);
+        console.log(m2);
+        if (p1 == undefined) {
+            return [p2, m2];
+        }
+        var cond_io = inputoutput;
+        // iterate over m1
+        for (var i = 0; i < m1.length; i++) {
+            cond_io[i]._out = m1[i];
+        }
+        console.log(cond_io);
+        condition = bottomUpFaster(globalBnd, [], boolOps, vars, consts, cond_io);
+        console.log(condition.toString());
+        console.log(p1m1);
+        console.log(p2m2);
+        var cov = coverage([p1m1, p2m2]);
+        console.log(cov);
+        // return [new Ite(condition, new compile(AST(p1)), new compile(AST(p2))), cov, c];
+        return [[ITE, [condition, p1, p2]], cov, counter];
+    }
+
+    function unify2(p1m1, p2m2, counter) {
+        var [p1, m1] = p1m1;
+        var [p2, m2] = p2m2;
+        if (p1 == undefined) {
+            return [p2, m2];
+        }
+        var cond_io = inputoutput;
+        // iterate over m1
+        for (var i = 0; i < m1.length; i++) {
+            cond_io[i]._out = m1[i];
+        }
+        condition = bottomUpFaster(globalBnd, [], boolOps, vars, consts, cond_io);
+        var cov = coverage([p1m1, p2m2]);
+        // return [new Ite(condition, new compile(AST(p1)), new compile(AST(p2))), cov, c];
+        return [[ITE, [condition, p1, p2]], cov, counter];
+    }
+
+    function STUN(all_p_correct, collection, inputoutput, remaining_incorrect_inputs) {
+        // if the programs collected so far cover all inputs, unify them
+        if (remaining_incorrect_inputs.length == 0) {
+            var [unified_p, all_true] = collection.reduce((acc, curr) => unify(acc, curr), [undefined, inputoutput.map(x => false)])
+            return unified_p;
+        }
+        // otherwise, find the inputs on which they all are incorrect
+        // and find the program that is correct on the most of those inputs
+        // and add it to the collection of programs
+        else {
+            var mask = inputoutput.map(x => remaining_incorrect_inputs.includes(x));
+            collection.push(max_correct(all_p_correct, mask));
+            joint_correct = coverage(collection);
+            var remaining_incorrect_inputs = [];
+            for (var i = 0; i < joint_correct.length; i++) {
+                if (joint_correct[i] == false) {
+                    remaining_incorrect_inputs.push(inputoutput[i]);
+                }
+            }
+            return STUN(all_p_correct, collection, inputoutput, remaining_incorrect_inputs);
+        }
+    }
+    var all_p_correct = eval_all_programs(plist, inputoutput);
+    var p = STUN(all_p_correct, [], inputoutput, inputoutput); 
+    return p;
+}
+
+var rv = bottomUpFasterSTUN(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+    { a: 5, b: 10, c: 3, _out: 15 },
+    { a: 8, b: 11, c: -1, _out: -11 },
+    { a: 3, b: 6, c: 4, _out: 12 },
+    { a: -3, b: 8, c: 4, _out: -12 },
+    { a: -3, b: -8, c: 4, _out: 0 }
+]);
+console.log(compile(AST(rv)).toString());
+
+// THIS CRASHES:
+// var rv = bottomUpFaster(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+//     { a: 5, b: 10, c: 3, _out: 15 },
+//     { a: 8, b: 11, c: -1, _out: -11 },
+//     { a: 3, b: 6, c: 4, _out: 12 },
+//     { a: -3, b: 8, c: 4, _out: -12 },
+//     { a: -3, b: -8, c: 4, _out: 0 }
+// ]);
+// console.log(rv);
+// console.log(compile(AST(rv)).toString());
+
+// THIS CRASHES:
+// var rv = bottomUpFasterSTUN(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+//     { a: 5, b: 10, c: 3, _out: 15 },
+//     { a: 8, b: 11, c: -1, _out: -11 },
+//     { a: 3, b: 6, c: 4, _out: 12 },
+//     { a: -3, b: 8, c: 4, _out: -12 },
+//     { a: -3, b: -8, c: -4, _out: 0 }
+// ]);
+// console.log(rv);
+
+function tmp(a,b,c) {
+    if (b < 0) {
+        return 0;
+    }
+    else {
+        if (0 < c) {
+            return a*c;
+        }
+        else {
+            return b*c;
+        }
+    }
+}
+
+tmp(5, 10, 3);
+tmp(8, 11, -1);
+tmp(3, 6, 4);
+tmp(-3, 8, 4);
+tmp(-3, -8, -4);
 
 function run1a1() {
     var rv = bottomUp(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [4, 5], [{ x: 5, y: 10, _out: 5 }, { x: 8, y: 3, _out: 3 }]);
-    writeToConsole("RESULT: " + rv.toString());
+    writeToConsole("RESULT: " + compile(AST(rv)).toString());
 }
 
 function run1a2() {
@@ -443,7 +634,7 @@ function run1a2() {
         { x: 1, y: -7, _out: -6 },
         { x: 1, y: 8, _out: -8 }
     ]);
-    writeToConsole("RESULT: " + rv.toString());
+    writeToConsole("RESULT: " + compile(AST(rv)).toString());
 
 }
 
@@ -457,7 +648,19 @@ function run1b() {
         { x: 1, y: -7, _out: -6 },
         { x: 1, y: 8, _out: -8 }
     ]);
-    writeToConsole("RESULT: " + rv.toString());
+    writeToConsole("RESULT: " + compile(AST(rv)).toString());
+
+}
+
+function run1c() {
+
+    var rv = bottomUpFaster(1, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+        { a: 5, b: 10, c: 3, _out: 15 },
+        { a: 8, b: 11, c: -1, _out: -11 },
+        { a: 3, b: 6, c: 4, _out: 12 },
+        { a: -3, b: 8, c: 4, _out: -12 }
+    ]);
+    writeToConsole("RESULT: " + compile(AST(rv)).toString());
 
 }
 
