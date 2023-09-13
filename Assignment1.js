@@ -436,13 +436,13 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
         plist = elimEquvalents(plist, inputoutput);
         return plist;
     }
-    // for each program in plist, get list of bools indicating whether it is correct on each input
     
     function get_correct_mask(ast, inputoutput) {
         return inputoutput.map(io => ast.interpret(io) == io._out);
     }
-
+    
     function eval_all_programs(plist, inputoutput) {
+        // for each program in plist, get list of bools indicating whether it is correct on each input
         return plist.map(p => [p, get_correct_mask(compile(AST(p)), inputoutput)]);
     }
 
@@ -512,8 +512,7 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
             collection.push(best_program(all_p_correct, mask));
             var joint_correct = coverage(collection);
             // sample random element from joint_correct
-            var randIdx = randInt(0, joint_correct.length);
-            var sample = joint_correct[randIdx];
+            var sample = joint_correct[randInt(0, joint_correct.length)];
             // if sample is true, i.e. if the program was correct on the input, then continue with STUN
             var remaining_incorrect_inputs = [];
             for (var i = 0; i < joint_correct.length; i++) {
@@ -556,7 +555,7 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
 // ]);
 // console.log(compile(AST(rv)).toString());
 
-// THIS CRASHES:
+// THIS CRASHES BUT NOT IN BROWSER:
 // var rv = bottomUpFasterSTUN(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
 //     { a: 5, b: 10, c: 3, _out: 15 },
 //     { a: 8, b: 11, c: -1, _out: -11 },
