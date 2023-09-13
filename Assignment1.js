@@ -293,6 +293,14 @@ function compile(e) {
     }
 }
 
+// function elimEquvalents(plist, inputoutputs) {
+//     console.log(plist.length);
+//     obsUniqs = Object.fromEntries(plist.map(p => [inputoutputs.map(io => compile(AST(p)).interpret(io)), p]));
+//     plist = Object.values(obsUniqs);
+//     console.log(plist.length);
+//     return plist
+// }
+
 function elimEquvalents(plist, inputoutputs) {
     let obsUniqs = {};
     for (var p of plist) {
@@ -308,6 +316,7 @@ function elimEquvalents(plist, inputoutputs) {
     plist = Object.values(obsUniqs);
     return plist
 }
+
 
 // var foo = compile(AST(plist[30]));
 // foo;
@@ -345,11 +354,6 @@ function bottomUp(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
         console.log(p);
     }
     return "FAIL";
-    // plist = grow(plist, nonterminals);
-    // console.log(plist.length);
-    // plist = grow(plist, nonterminals); null;
-    // console.log(plist.length);
-    // console.log(plist.slice(-1)[0]);
 }
 
 
@@ -361,24 +365,20 @@ function bottomUp(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
 // rv;
 
 function get_arguments(nonterminal, plist, vars, consts, argtypes) {
-    var args = [];
     var vars = vars.map(x => [VARIABLE, [x]]);
     var var_and_consts = vars.concat(consts.map(x => [NUM, [x]]));
     if (nonterminal == TIMES) {
         // Multiplications can only occur between variables and constants or between two variables
-        args = [vars, var_and_consts];
+        return [vars, var_and_consts];
     }
     else if (nonterminal == LT) {
         // Comparisons cannot include any arithmetic, only variables and constants
-        args = [var_and_consts, var_and_consts];        
+        return [var_and_consts, var_and_consts];        
     }
     else {
         // Just get all the arguments of the correct type
-        for (var j = 0; j < argtypes.length; j++) {
-            args.push(plist.filter(x => returnType(x, vars, consts) == argtypes[j]));
-        }
+        return argtypes.map(x => plist.filter(y => returnType(y, vars, consts) == x));
     }
-    return args;
 }
     
 
@@ -414,64 +414,46 @@ function bottomUpFaster(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
     console.log(plist);
     for (var c = 0; c < globalBnd; c++) {
         console.log(c);
+        // plist = grow(plist, nonterminals, vars, consts);
         plist = growFaster(plist, nonterminals, vars, consts);
         console.log(plist.length);
         plist = elimEquvalents(plist, inputoutput);
         console.log(plist.length);
-        for (var n = 0; n < plist.length; n++) {
-            var p = plist[n];
-            if (isCorrect(p, inputoutput)) {
-                return p;
-            }
-        }
+        var p = plist.find(p => isCorrect(p, inputoutput));
         console.log(p);
+        if (p != undefined) {
+            return compile(AST(p));
+        }
     }
     return "FAIL";
 }
 
 function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutput) {
-    var plist = vars.map(x => [VARIABLE, [x]]).concat(consts.map(x => [NUM, [x]])).concat([[FALSE]]);
-    var nonterminals = [PLUS, TIMES, LT, AND, NOT, ITE];
     // first best-effort synthesis attempt
     // produce a program that works correctly on some inputs and incorrectly on others
-    plist = growFaster(plist, nonterminals, vars, consts);
-    plist = elimEquvalents(plist, inputoutput);
+    function growAndElimEquivalents(plist, nonterminals, vars, consts, inputoutput) {
+        plist = growFaster(plist, nonterminals, vars, consts);
+        plist = elimEquvalents(plist, inputoutput);
+        return plist;
+    }
     // for each program in plist, get list of bools indicating whether it is correct on each input
     
     function get_correct_mask(ast, inputoutput) {
-        var correct = [];
-        for (var i = 0; i < inputoutput.length; i++) {
-            var inpt = inputoutput[i];
-            var out = ast.interpret(inpt);
-            if (out == inpt._out) {
-                correct.push(true);
-            }
-            else {
-                correct.push(false);
-            }
-        }
-        return correct;
+        return inputoutput.map(io => ast.interpret(io) == io._out);
     }
 
     function eval_all_programs(plist, inputoutput) {
-        var all_p_correct = [];
-        for (var n = 0; n < plist.length; n++) {
-            var p = plist[n];
-            var ast = compile(AST(p));
-            var correct = get_correct_mask(ast, inputoutput);
-            all_p_correct.push([p, correct]);
-        }
-        return all_p_correct;
+        return plist.map(p => [p, get_correct_mask(compile(AST(p)), inputoutput)]);
     }
 
-    function max_correct(all_p_correct, mask) {
+    function best_program(all_p_correct, mask) {
         // find the program that is correct on the most inputs
+        // if mask is defined, only consider the inputs where mask is true
         var max_correct = 0;
         var max_correct_p = [];
         var best_correct = [];
         for (var i = 0; i < all_p_correct.length; i++) {
             var correct = all_p_correct[i][1];
-            // if mask is defined, only consider the inputs where mask is true
             if (mask != undefined) {
                 var mask_correct = correct.filter((x, j) => mask[j] == true);
             }
@@ -510,7 +492,7 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
         for (var i = 0; i < m1.length; i++) {
             cond_io[i]._out = m1[i];
         }
-        condition = bottomUpFaster(globalBnd, [], boolOps, vars, consts, cond_io);
+        var condition = bottomUpFaster(globalBnd, [], boolOps, vars, consts, cond_io);
         console.log(condition);
         var cov = coverage([p1m1, p2m2]);
         return [[ITE, [condition, p1, p2]], cov, counter];
@@ -527,40 +509,51 @@ function bottomUpFasterSTUN(globalBnd, intOps, boolOps, vars, consts, inputoutpu
         // and add it to the collection of programs
         else {
             var mask = inputoutput.map(x => remaining_incorrect_inputs.includes(x));
-            collection.push(max_correct(all_p_correct, mask));
-            joint_correct = coverage(collection);
+            collection.push(best_program(all_p_correct, mask));
+            var joint_correct = coverage(collection);
+            // sample random element from joint_correct
+            var randIdx = randInt(0, joint_correct.length);
+            var sample = joint_correct[randIdx];
+            // if sample is true, i.e. if the program was correct on the input, then continue with STUN
             var remaining_incorrect_inputs = [];
             for (var i = 0; i < joint_correct.length; i++) {
                 if (joint_correct[i] == false) {
                     remaining_incorrect_inputs.push(inputoutput[i]);
                 }
             }
-            return STUN(all_p_correct, collection, inputoutput, remaining_incorrect_inputs);
+            console.log(joint_correct);
+            console.log(sample);
+            console.log(remaining_incorrect_inputs.length);
+            if (sample == true) {
+            // if (true) {
+                return STUN(all_p_correct, collection, inputoutput, remaining_incorrect_inputs);
+            }
+            // otherwise, continue with growAndElimEquivalents
+            else {
+                // remove last program from collection, since we want a better one instead
+                collection.pop();
+                plist = growAndElimEquivalents(plist, nonterminals, vars, consts, inputoutput);
+                console.log(plist.length);
+                all_p_correct = eval_all_programs(plist, inputoutput);
+                return STUN(all_p_correct, collection, inputoutput, remaining_incorrect_inputs);
+            }
         }
     }
+    var plist = vars.map(x => [VARIABLE, [x]]).concat(consts.map(x => [NUM, [x]])).concat([[FALSE]]);
+    var nonterminals = [PLUS, TIMES, LT, AND, NOT, ITE];
+    var plist = growAndElimEquivalents(plist, nonterminals, vars, consts, inputoutput);
     var all_p_correct = eval_all_programs(plist, inputoutput);
     var p = STUN(all_p_correct, [], inputoutput, inputoutput); 
     return p;
 }
 
-var rv = bottomUpFasterSTUN(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
-    { a: 5, b: 10, c: 3, _out: 15 },
-    { a: 8, b: 11, c: -1, _out: -11 },
-    { a: 3, b: 6, c: 4, _out: 12 },
-    { a: -3, b: 8, c: 4, _out: -12 },
-    { a: -3, b: -8, c: 4, _out: 0 }
-]);
-console.log(compile(AST(rv)).toString());
-
-// THIS CRASHES:
-// var rv = bottomUpFaster(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+// var rv = bottomUpFasterSTUN(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
 //     { a: 5, b: 10, c: 3, _out: 15 },
 //     { a: 8, b: 11, c: -1, _out: -11 },
 //     { a: 3, b: 6, c: 4, _out: 12 },
 //     { a: -3, b: 8, c: 4, _out: -12 },
 //     { a: -3, b: -8, c: 4, _out: 0 }
 // ]);
-// console.log(rv);
 // console.log(compile(AST(rv)).toString());
 
 // THIS CRASHES:
@@ -572,6 +565,18 @@ console.log(compile(AST(rv)).toString());
 //     { a: -3, b: -8, c: -4, _out: 0 }
 // ]);
 // console.log(rv);
+
+// ALSO THIS CRASHES:
+// var rv = bottomUpFaster(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+//     { a: 5, b: 10, c: 3, _out: 15 },
+//     { a: 8, b: 11, c: -1, _out: -11 },
+//     { a: 3, b: 6, c: 4, _out: 12 },
+//     { a: -3, b: 8, c: 4, _out: -12 },
+//     { a: -3, b: -8, c: 4, _out: 0 }
+// ]);
+// console.log(rv);
+// console.log(compile(AST(rv)).toString());
+
 
 function tmp(a,b,c) {
     if (0 < c) {
@@ -611,18 +616,32 @@ function run1a2() {
 
 }
 
-
 function run1b() {
-
-    var rv = bottomUpFaster(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [-1, 5], [
-        { x: 10, y: 7, _out: 17 },
-        { x: 4, y: 7, _out: -7 },
-        { x: 10, y: 3, _out: 13 },
-        { x: 1, y: -7, _out: -6 },
-        { x: 1, y: 8, _out: -8 }
+    // var rv = bottomUpFaster(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["x", "y"], [-1, 5], [
+    //     { x: 10, y: 7, _out: 17 },
+    //     { x: 4, y: 7, _out: -7 },
+    //     { x: 10, y: 3, _out: 13 },
+    //     { x: 1, y: -7, _out: -6 },
+    //     { x: 1, y: 8, _out: -8 }
+    // ]);
+    // writeToConsole("RESULT: " + compile(AST(rv)).toString());
+    // var rv = bottomUpFaster(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+    //     { a: 5, b: 10, c: 3, _out: 15 },
+    //     { a: 8, b: 11, c: -1, _out: -11 },
+    //     { a: 3, b: 6, c: 4, _out: 12 },
+    //     { a: -3, b: 8, c: 4, _out: -12 },
+    //     { a: -3, b: -8, c: 4, _out: 0 }
+    // ]);
+    // writeToConsole("RESULT: " + compile(AST(rv)).toString());
+    
+    var rv = bottomUpFasterSTUN(3, [VARIABLE, NUM, PLUS, TIMES, ITE], [AND, NOT, LT, FALSE], ["a", "b", "c"], [0], [
+        { a: 5, b: 10, c: 3, _out: 15 },
+        { a: 8, b: 11, c: -1, _out: -11 },
+        { a: 3, b: 6, c: 4, _out: 12 },
+        { a: -3, b: 8, c: 4, _out: -12 },
+        { a: -3, b: -8, c: -4, _out: 0 }
     ]);
     writeToConsole("RESULT: " + compile(AST(rv)).toString());
-
 }
 
 function run1c() {
