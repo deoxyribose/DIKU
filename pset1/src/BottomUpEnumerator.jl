@@ -1,7 +1,21 @@
-using Distributed
-using DataStructures
+# using Distributed
+# using DataStructures
 
-addprocs(12)
+# addprocs(12)
+
+# function grow(plist::Vector{Shape})::Vector{Shape}
+#     res::Vector{Shape} = []
+#     # Question 1a
+#     for i in 1:length(plist)
+#         push!(res, plist[i])
+#         push!(res, Mirror(plist[i]))
+#         for j in (i + 1):length(plist)
+#             push!(res, SIntersection(plist[i], plist[j]))
+#             push!(res, SUnion(plist[i], plist[j]))
+#         end
+#     end
+#     return res
+# end
 
 function grow(plist::Vector{Shape})::Vector{Shape}
     res::Vector{Shape} = []
@@ -30,7 +44,6 @@ function synthesize(in_x::Vector{Float64}, in_y::Vector{Float64}, out::Vector{Bo
     plist = all_terminal_shapes()
     c = 0
     while true
-        @show(c)
         plist = grow(plist)
         @show(length(plist))
         plist = elim_equivalents(plist, in_x, in_y)
@@ -45,37 +58,16 @@ function synthesize(in_x::Vector{Float64}, in_y::Vector{Float64}, out::Vector{Bo
     return make_circle(make_coord(5, 5), 5)
 end
 
-
-# function elim_equivalents(plist::Vector{Shape}, in_x::Vector{Float64}, in_y::Vector{Float64})::Vector{Shape}
-#     # Question 1b
-#     elim_dict = Dict()
-#     for p in plist
-#         out = interpret(p, in_x, in_y)
-#         if out in keys(elim_dict)
-#             continue
-#         else
-#             elim_dict[out] = p
-#         end
-#     end
-#     return collect(values(elim_dict))
-# end
-
-
 function elim_equivalents(plist::Vector{Shape}, in_x::Vector{Float64}, in_y::Vector{Float64})::Vector{Shape}
-    elim_dict = OrderedDict{Any, Shape}()
-    ps_and_outs = pmap(p -> (p, interpret(p, in_x, in_y)), plist)
-
-    for (p, out) in ps_and_outs
-        if haskey(elim_dict, out)
-            continue
-        else
+    elim_dict = Dict()
+    for p in plist
+        out = interpret(p, in_x, in_y) # there much be a way to use caching here
+        if !haskey(elim_dict, out)
             elim_dict[out] = p
         end
     end
-
     return collect(values(elim_dict))
 end
-
 
 function is_correct(p::Shape, in_x::Vector{Float64}, in_y::Vector{Float64}, out::Vector{Bool})::Bool
     return interpret(p, in_x, in_y) == out
