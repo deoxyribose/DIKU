@@ -1,24 +1,17 @@
-using Combinatorics
+using Distributed
+using DataStructures
+
+addprocs(12)
 
 function grow(plist::Vector{Shape})::Vector{Shape}
     res::Vector{Shape} = []
     # Question 1a
-    ops = [nothing, SIntersection, Mirror, SUnion]
-    for op in ops
-        for p in plist
-            for p_ in plist
-                if isnothing(op)
-                    new_p = p
-                elseif op == Mirror
-                    new_p = op(p)
-                else
-                    new_p = op(p, p_)
-                end
-                if new_p in res
-                    continue
-                end
-                push!(res, new_p)
-            end
+    for p in plist
+        push!(res, p)
+        push!(res, Mirror(p))
+        for p_ in plist
+            push!(res, SIntersection(p, p_))
+            push!(res, SUnion(p, p_))
         end
     end
     return res
@@ -35,29 +28,54 @@ function synthesize(in_x::Vector{Float64}, in_y::Vector{Float64}, out::Vector{Bo
 
     # Question 1b
     plist = all_terminal_shapes()
+    c = 0
     while true
+        @show(c)
         plist = grow(plist)
+        @show(length(plist))
         plist = elim_equivalents(plist, in_x, in_y)
+        @show(length(plist))
         for p in plist
             if is_correct(p, in_x, in_y, out)
                 return p
             end
         end
+        c = c + 1
     end
     return make_circle(make_coord(5, 5), 5)
 end
 
 
+# function elim_equivalents(plist::Vector{Shape}, in_x::Vector{Float64}, in_y::Vector{Float64})::Vector{Shape}
+#     # Question 1b
+#     elim_dict = Dict()
+#     for p in plist
+#         out = interpret(p, in_x, in_y)
+#         if out in keys(elim_dict)
+#             continue
+#         else
+#             elim_dict[out] = p
+#         end
+#     end
+#     return collect(values(elim_dict))
+# end
+
+
 function elim_equivalents(plist::Vector{Shape}, in_x::Vector{Float64}, in_y::Vector{Float64})::Vector{Shape}
-    # Question 1b
-    elim_dict = Dict()
-    for (p, p_) in combinations(plist, 2)
-        if interpret(p, in_x, in_y) == interpret(p_, in_x, in_y)
-            elim_dict[p_] = p
+    elim_dict = OrderedDict{Any, Shape}()
+    ps_and_outs = pmap(p -> (p, interpret(p, in_x, in_y)), plist)
+
+    for (p, out) in ps_and_outs
+        if haskey(elim_dict, out)
+            continue
+        else
+            elim_dict[out] = p
         end
     end
-    return collect(keys(elim_dict))
+
+    return collect(values(elim_dict))
 end
+
 
 function is_correct(p::Shape, in_x::Vector{Float64}, in_y::Vector{Float64}, out::Vector{Bool})::Bool
     return interpret(p, in_x, in_y) == out
