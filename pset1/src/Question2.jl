@@ -48,10 +48,71 @@ function positive_modulus(x, y)
 end
 
 
+function possible_breaks(output)
+    n = length(string(output))
+    breaks = []
+    for i in 2:5
+        for ii in 2:5
+            for iii in 2:5
+                for iv in 2:5
+                    if i + ii + iii + iv == n
+                        push!(breaks, (i, ii, iii, iv))
+                    end
+                end
+            end
+        end
+    end
+    return breaks
+end
+
+function solve_given_breaks(breaks, input, output)
+    out_str = string(output)
+    indices = cumsum(breaks)
+    b_output = (out_str[1:indices[1]], out_str[indices[1]+1:indices[2]], out_str[indices[2]+1:indices[3]], out_str[indices[3]+1:indices[4]])
+    holes = []
+    for (i,b) in enumerate(breaks)
+        current_b_output = b_output[i]
+        b_out = parse(Int64, current_b_output)
+        while input > b_out
+            current_b_output = "1" * current_b_output
+            b_out = parse(Int64, current_b_output)
+        end
+        hole = positive_modulus(b_out - input, 10^b)
+        push!(holes, hole)
+    end
+    return holes
+end
+ 
+
 function structured(inputoutputs::Vector{Tuple{Int64,String}})::LKDProgram
     # synthesizes an LKD program that matches the given input/output pairs
     # inputoutputs is a vector of (input, output) pairs
 
     # Question 2
-    # YOUR CODE HERE
+    # first get possible breaks
+    # then go through inputoutputs, solve for each break until either an inputoutput fails
+    # in which case go to the next break
+    # or all inputoutputs are satisfied
+    # in which case return that program
+
+    # get possible breaks
+    possible_breaks_list = possible_breaks(inputoutputs[1][2])
+    for (i, inputoutput) in enumerate(inputoutputs)
+        input = inputoutput[1]
+        output = inputoutput[2]
+        for breaks in possible_breaks_list
+            holes = solve_given_breaks(breaks, input, output)
+            if interpretLKDProgram(breaks, holes[1]) != input
+                continue
+            elseif interpretLKDProgram(breaks, holes[2]) != input
+                continue
+            elseif interpretLKDProgram(breaks, holes[3]) != input
+                continue
+            elseif interpretLKDProgram(breaks, holes[4]) != input
+                continue
+            else
+                return breaks
+            end
+        end
+    end
 end

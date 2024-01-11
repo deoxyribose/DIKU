@@ -17,6 +17,8 @@
 #     return res
 # end
 
+include("Interpreter.jl")
+
 function grow(plist::Vector{Shape})::Vector{Shape}
     res::Vector{Shape} = []
     # Question 1a
@@ -39,21 +41,23 @@ function synthesize(in_x::Vector{Float64}, in_y::Vector{Float64}, out::Vector{Bo
     @assert(all(0 .<= in_x .<= MAX_COORD))
     @assert(all(0 .<= in_y .<= MAX_COORD))
     # out is a boolean vector
+    new_x = [1.0, 1, 8, 8, 4]
+    new_y = [1.0, 8, 1, 8, 4]
 
     # Question 1b
     plist = all_terminal_shapes()
-    c = 0
     while true
-        plist = grow(plist)
         @show(length(plist))
-        plist = elim_equivalents(plist, in_x, in_y)
+        # plist = elim_equivalents(plist, vcat(in_x, in_y), vcat(in_y, in_x))
+        plist = elim_equivalents(plist, vcat(in_x, new_x), vcat(in_y, new_y))
+        #plist = elim_equivalents(plist, new_x, new_y)
         @show(length(plist))
         for p in plist
             if is_correct(p, in_x, in_y, out)
                 return p
             end
         end
-        c = c + 1
+        plist = grow(plist)
     end
     return make_circle(make_coord(5, 5), 5)
 end
@@ -61,7 +65,7 @@ end
 function elim_equivalents(plist::Vector{Shape}, in_x::Vector{Float64}, in_y::Vector{Float64})::Vector{Shape}
     elim_dict = Dict()
     for p in plist
-        out = interpret(p, in_x, in_y) # there much be a way to use caching here
+        out = interpret(p, in_x, in_y)
         if !haskey(elim_dict, out)
             elim_dict[out] = p
         end
