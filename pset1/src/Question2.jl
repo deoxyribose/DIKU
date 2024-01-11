@@ -87,31 +87,23 @@ end
 function structured(inputoutputs::Vector{Tuple{Int64,String}})::LKDProgram
     # synthesizes an LKD program that matches the given input/output pairs
     # inputoutputs is a vector of (input, output) pairs
-
-    # Question 2
-    # first get possible breaks
-    # then go through inputoutputs, solve for each break until either an inputoutput fails
-    # in which case go to the next break
-    # or all inputoutputs are satisfied
-    # in which case return that program
-
-    # get possible breaks
+    # get possible breaks (they are the same for all inputoutputs)
     possible_breaks_list = possible_breaks(inputoutputs[1][2])
-    for (i, inputoutput) in enumerate(inputoutputs)
-        input = inputoutput[1]
-        output = inputoutput[2]
-        for breaks in possible_breaks_list
+    for breaks in possible_breaks_list
+        input = inputoutputs[1][1]
+        output = inputoutputs[1][2]
+        prev_holes = solve_given_breaks(breaks, input, output)
+        for (i, inputoutput) in enumerate(inputoutputs[2:end])
+            input = inputoutput[1]
+            output = inputoutput[2]
             holes = solve_given_breaks(breaks, input, output)
-            if interpretLKDProgram(breaks, holes[1]) != input
-                continue
-            elseif interpretLKDProgram(breaks, holes[2]) != input
-                continue
-            elseif interpretLKDProgram(breaks, holes[3]) != input
-                continue
-            elseif interpretLKDProgram(breaks, holes[4]) != input
-                continue
-            else
-                return breaks
+            if holes != prev_holes
+                possible_breaks_list = possible_breaks_list[2:end]
+                break
+            end
+            prev_holes = holes
+            if i == length(inputoutputs) - 1
+                return (LKDTerm(breaks[1], holes[1]), LKDTerm(breaks[2], holes[2]), LKDTerm(breaks[3], holes[3]), LKDTerm(breaks[4], holes[4]))
             end
         end
     end
